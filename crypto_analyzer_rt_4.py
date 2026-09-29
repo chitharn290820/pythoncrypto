@@ -1866,18 +1866,19 @@ def make_handler(state):
 
     return Handler
 
+# 1.1 แก้ไข ALLOWED_HOSTS ให้รองรับโดเมน Render
+ALLOWED_HOSTS = {"127.0.0.1", "localhost", "pythoncrypto-20.onrender.com"}
 
-def start_server(state, port):
+# 1.2 แก้ไขฟังก์ชัน start_server ให้รับ host="0.0.0.0"
+def start_server(state, port, host="0.0.0.0"):
     last_err = None
-    for p in range(port, port + 11):
-        try:
-            srv = ThreadingHTTPServer(("127.0.0.1", p), make_handler(state))
-            threading.Thread(target=srv.serve_forever, daemon=True, name="dashboard-http").start()
-            return srv, p
-        except OSError as e:
-            last_err = e
-    raise RuntimeError(f"เปิดพอร์ต {port}-{port + 10} ไม่ได้: {last_err}")
-
+    # บน Render ควรผูกพอร์ตที่กำหนดโดยตรง ไม่ต้องวนลูปหาพอร์ตอื่น
+    try:
+        srv = ThreadingHTTPServer((host, port), make_handler(state))
+        threading.Thread(target=srv.serve_forever, daemon=True, name="dashboard-http").start()
+        return srv, port
+    except OSError as e:
+        raise RuntimeError(f"ไม่สามารถเปิดพอร์ต {port} บน host {host} ได้: {e}")
 
 def run_live(args):
     """รันค้างไว้: เปิดเว็บเซิร์ฟเวอร์ + วิเคราะห์ซ้ำทุก --interval-min นาที + รอปุ่มปิดจาก Dashboard"""
