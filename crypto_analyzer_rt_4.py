@@ -1279,7 +1279,85 @@ def get_investable_universe(n=TOP_N_COINS):
         if len(universe) >= n:
             break
     return universe, note
+def get_top_coins_from_binance(n=TOP_N_COINS):
+    """ดึงรายชื่อเหรียญ Top N ตามปริมาณการเทรด/คู่ USDT บน Binance (สำรองเมื่อ CoinGecko ล้มเหลว)"""
+    for base in BINANCE_BASES:
+        try:
+            r = requests.get(f"{base}/ticker/24hr", headers=HEADERS, timeout=20)
+            if r.status_code == 200:
+                data = r.json()
+                # คัดเฉพาะคู่ USDT ที่เป็นสปอต
+                usdt_pairs = [
+                    d for d in data 
+                    if d.get("symbol", "").endswith("USDT") and not any(s in d["symbol"] for s in ["UPUSDT", "DOWNUSDT", "BEARUSDT", "BULLUSDT"])
+                ]
+                # เรียงลำดับตาม Quote Volume (ปริมาณซื้อขาย USDT ย้อนหลัง 24 ชม.)
+                usdt_pairs.sort(key=lambda x: float(x.get("quoteVolume", 0)), reverse=True)
+                
+                coins = []
+                for idx, p in enumerate(usdt_pairs, 1):
+                    sym = p["symbol"][:-4].upper() # ตัดคำว่า USDT ออก
+                    if sym in STABLE_SYMBOLS or any(w in sym.lower() for w in _WRAPPED_WORDS):
+                        continue
+                    coins.append({
+                        "id": sym.lower(), # ใช้ symbol เป็น id สำรอง
+                        "symbol": sym,
+                        "name": sym,
+                        "current_price": float(p.get("lastPrice", 0)),
+                        "market_cap": float(p.get("quoteVolume", 0)), # ใช้ volume แทน mcap ชั่วคราว
+                        "market_cap_rank": idx,
+                        "total_volume": float(p.get("quoteVolume", 0)),
+                    })
+                    if len(coins) >= n * 2: # ดึงเผื่อเลือก
+                        break
+                return coins
+        except requests.RequestException:
+            continue
+    return None
 
+
+def get_investable_universe(n=TOP_N_COINS):
+    """คืนรายชื่อเหรียญ n อันดับแรกที่ลงทุนได้ (สลับไปใช้ Binance อัตโนมัติถ้า CoinGecko ล่ม)"""
+    coins = get_top_coins(200)
+    using_fallback = False
+    
+    # ถ้า CoinGecko ล้มเหลว ให้สลับไปดึงจาก Binance แทน
+    if not coins:
+        print("  -> CoinGecko ล้มเหลว/ติด Rate Limit: กำลังสลับไปใช้รายการเหรียญจาก Binance API สำรอง...")
+        coins = get_top_coins_from_binance(n)
+        using_fallback = True
+
+    if not coins:
+        return None, "ดึงรายชื่อเหรียญทั้งจาก CoinGecko และ Binance ไม่สำเร็จ (กรุณาเช็คอินเทอร์เน็ต/API)"
+
+    tradable = get_binance_usdt_symbols()
+    universe, seen, note = [], set(), ""
+    
+    if using_fallback:
+        note = "⚠️ CoinGecko ไม่ตอบสนอง ระบบสลับมาใช้ข้อมูล Top Coins ตาม Volume จาก Binance ชั่วคราว"
+    elif tradable is None:
+        note = "ดึงรายการคู่เทรด Binance ไม่ได้ จึงไม่ได้กรองตามความสามารถในการเทรด"
+
+    for c in coins:
+        sym = str(c["symbol"]).upper()
+        if sym in seen or _is_stable_or_wrapped(c):
+            continue
+        if tradable is not None and sym not in tradable:
+            continue
+        seen.add(sym)
+        universe.append({
+            "id": c["id"],
+            "symbol": sym,
+            "name": c.get("name", sym),
+            "price": c.get("current_price"),
+            "market_cap": c.get("market_cap"),
+            "rank": c.get("market_cap_rank"),
+            "volume_24h": c.get("total_volume"),
+        })
+        if len(universe) >= n:
+            break
+            
+    return universe, note
 
 # ---------------------------------------------------------------------------
 # ประวัติรายวัน: cache ไว้ (รายวันเปลี่ยนวันละครั้ง) เพื่อไม่ให้โดน rate limit ของ CoinGecko ทุกรอบ 20 นาที
