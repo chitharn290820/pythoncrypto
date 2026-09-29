@@ -1,22 +1,66 @@
-import os
-from flask import Flask
-app = Flask(__name__)
-@app.route("/")
-def home():
-    return "Crypto Analyzer is running!"
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+"""
+Crypto Decision Dashboard  (v4)
+================================
+เครื่องมือรวบรวมข้อมูลเพื่อ "ประกอบการตัดสินใจ" ลงทุนคริปโต แสดงผลเป็น Dashboard HTML บนเครื่องคุณเอง
+รันค้างไว้และรีเฟรชอัตโนมัติทุก 60 นาที (ปรับได้) พร้อมปุ่มปิดโปรแกรม Python จากหน้าเว็บ
+
+สิ่งที่ทำในแต่ละรอบ
+  1) ข่าว: ดึง RSS จาก 20 แหล่ง (สื่อคริปโต 12 + เศรษฐกิจ/หน่วยงาน 8 เช่น Federal Reserve, SEC, CNBC, BBC)
+     รวมข่าวซ้ำข้ามแหล่ง นับ "จำนวนแหล่งที่รายงาน" ให้คะแนน sentiment และสรุปหัวข้อที่พูดถึงมาก
+  2) ข้อมูลตลาด: Fear & Greed (alternative.me), มูลค่าตลาดรวม/BTC dominance (CoinGecko), USD/THB
+  3) เหรียญ 60 ตัว (ปรับด้วย --coins) ที่ "ลงทุนได้" = ไม่ใช่ stablecoin/wrapped และมีคู่ USDT สถานะ TRADING บน Binance
+     - รายวัน (CoinGecko, สำรอง Binance): ผลตอบแทน 7/30/90 วัน, RSI, Golden Cross, MACD, คะแนนโมเมนตัม,
+       ประมาณวันถึงกำไร 5%, รอบขาขึ้นในอดีต, กำไรสูงสุดในอดีต, สัญญาณเตือนขาย, cross-check ราคา 2 แหล่ง
+     - รายชั่วโมง (Binance): ผลตอบแทน 24 ชม. ที่ผ่านมา + พยากรณ์ 24 ชม. ข้างหน้า (logistic regression) พร้อมโอกาสขึ้น
+       ทิศทาง ช่วงคาดการณ์ และ "Edge" (ทดสอบนอกตัวอย่าง หักค่าธรรมเนียม ถ้าไม่ชนะ baseline จะขึ้น "ไม่พบ")
+  4) มิเตอร์ซื้อขาย 0-100 ต่อเหรียญ + คำตัดสิน (น่าสนใจซื้อ / รอดู / หลีกเลี่ยง) + ข้อดี-ข้อเสียที่อธิบายได้
+  5) คัดเหรียญเด่น 5-10 อันดับ + AI วิเคราะห์ (ถ้าตั้ง ANTHROPIC_API_KEY จะใช้ Claude ถ้าไม่ตั้งจะใช้คำอธิบายแบบกฎ)
+
+วิธีใช้
+    pip install requests pandas numpy
+
+    python crypto_analyzer_rt_4.py                      # เปิด Dashboard + รันค้าง รีเฟรชทุก 60 นาที
+    python crypto_analyzer_rt_4.py --interval-min 30    # เปลี่ยนรอบรีเฟรช
+    python crypto_analyzer_rt_4.py --no-browser         # ไม่เปิดเบราว์เซอร์อัตโนมัติ (เปิด http://127.0.0.1:8765/ เอง)
+    python crypto_analyzer_rt_4.py --once               # วิเคราะห์รอบเดียวแล้วจบ (พิมพ์สรุป + crypto_analysis_full.json)
+
+    ให้ Claude วิเคราะห์เหรียญเด่น (ไม่บังคับ):
+        Windows (PowerShell):  $env:ANTHROPIC_API_KEY="sk-ant-..."
+        macOS/Linux:           export ANTHROPIC_API_KEY="sk-ant-..."
+        ตัวเลือก: --model claude-sonnet-5-5   --ai-every 1   --no-ai
+
+    โหมดเดิมที่ยังใช้ได้:
+        --watch bitcoin --interval 15 | --check-position near --entry-price 3111 | --forecast bitcoin [--symbol BTC]
+
+หยุดโปรแกรม: กดปุ่ม "⏹ ปิดโปรแกรม Python" บน Dashboard หรือ Ctrl+C
+
+ความปลอดภัย: เซิร์ฟเวอร์ผูกกับ 127.0.0.1 เท่านั้น (เครื่องอื่นเข้าไม่ได้) ปุ่มปิด/รีเฟรชต้องมี token สุ่มที่ฝังในหน้าเว็บ
+และตรวจ Host header กัน DNS rebinding; หัวข้อข่าว/ลิงก์จากภายนอกถูก escape/กรอง http(s) ก่อนแสดงเสมอ
+
+⚠️ ข้อจำกัดสำคัญ (โปรดอ่าน)
+- ไม่มีสคริปต์ใดการันตีกำไรได้ ราคาคริปโตผันผวนสูงและถูกขับด้วยข่าว/สภาพคล่องที่คาดเดาไม่ได้
+- มิเตอร์ซื้อขายเป็นคะแนนถ่วงน้ำหนักที่ตั้งเองตามหลักการ ยังไม่เคย backtest จึงเป็นตัวคัดกรอง ไม่ใช่ตัวทำนาย
+- พยากรณ์ 24 ชม. มักไม่พบ edge (ระยะสั้นใกล้เคียง random walk) ถ้าขึ้น "ไม่พบ" อย่าเชื่อเปอร์เซ็นต์โอกาสขึ้น
+- Sentiment ข่าวเป็นการนับคำในหัวข้อ (หยาบ) และ RSS บางแหล่งอาจล่ม/เปลี่ยน URL/บล็อก — ดูสถานะแต่ละแหล่งบน Dashboard
+  และแก้ลิสต์ NEWS_SOURCES ในโค้ดได้
+- "ลงทุนได้" ตรวจจาก Binance เท่านั้น ก่อนซื้อจริงต้องเช็คว่ากระดานที่คุณใช้ (และถูกกฎหมายในประเทศของคุณ) มีเหรียญนั้น
+- ทั้งหมดนี้ไม่ใช่คำแนะนำการลงทุน ควรตั้ง stop-loss และลงเงินเฉพาะส่วนที่ยอมเสียได้
+"""
+
+
 import time
 import json
 import math
 import argparse
 from datetime import datetime, timezone
+
 import requests
 import pandas as pd
 import numpy as np
+
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
 BINANCE_BASE = "https://api.binance.com/api/v3"
+
 TOP_N_COINS = 60          # จำนวนเหรียญ (ตาม market cap) ที่จะนำมาวิเคราะห์ทั้งหมด
 DISPLAY_TOP_N = 10        # จำนวนเหรียญที่จะโชว์เป็นการ์ดมิเตอร์บนแดชบอร์ด
 HISTORY_DAYS = 365        # free tier ของ CoinGecko รองรับช่วงนี้แน่นอน
