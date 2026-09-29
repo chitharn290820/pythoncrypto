@@ -1496,10 +1496,9 @@ def select_top_picks(rows, k_max=10, k_min=5):
     return picks
 
 
+# ค้นหาฟังก์ชัน ai_analyze และปรับปรุงการดึง API Key
 def ai_analyze(picks, market, news, model=None):
-    """ให้ Claude วิเคราะห์เหรียญเด่นจากข้อมูลที่ระบบคำนวณ + พาดหัวข่าว (ต้องมี ANTHROPIC_API_KEY)
-    คืน (dict ผลวิเคราะห์ | None, ข้อความสถานะ) — ไม่โยน exception; ใช้ข้อมูลที่ส่งไปเท่านั้น ห้ามแต่งตัวเลขเพิ่ม
-    """
+    # ปรับให้ดึงจาก os.getenv หรือรับจากพารามิเตอร์
     key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not key:
         return None, "ไม่ได้ตั้ง ANTHROPIC_API_KEY จึงใช้คำอธิบายแบบกฎ (ไม่ได้ใช้ AI)"
