@@ -1879,17 +1879,25 @@ def start_server(state, port, host="0.0.0.0"):
     except OSError as e:
         raise RuntimeError(f"ไม่สามารถเปิดพอร์ต {port} บน host {host} ได้: {e}")
 
+# 2.1 ปรับปรุงใน run_live
 def run_live(args):
-    """รันค้างไว้: เปิดเว็บเซิร์ฟเวอร์ + วิเคราะห์ซ้ำทุก --interval-min นาที + รอปุ่มปิดจาก Dashboard"""
+    # อ่านค่า PORT จาก Render (ถ้าไม่มีให้ใช้ args.port หรือ 8765)
+    env_port = os.environ.get("PORT")
+    port = int(env_port) if env_port else args.port
+
     interval_s = max(1, int(args.interval_min * 60))
     state = AppState(interval_s, secrets.token_urlsafe(24))
-    srv, port = start_server(state, args.port)
-    url = f"http://127.0.0.1:{port}/"
-    print(f"Dashboard: {url}")
-    print(f"วิเคราะห์ซ้ำทุก {args.interval_min:g} นาที | หยุดโปรแกรมได้ 2 วิธี: ปุ่ม '⏹ ปิดโปรแกรม Python' บนหน้าเว็บ หรือกด Ctrl+C\n")
-    if not args.no_browser:
-        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    
+    # ส่ง host="0.0.0.0" เข้าไปใน start_server
+    srv, port = start_server(state, port, host="0.0.0.0")
+    
+    url = f"https://pythoncrypto-20.onrender.com/"
+    print(f"Dashboard Online: {url}")
+    print(f"วิเคราะห์ซ้ำทุก {args.interval_min:g} นาที\n")
 
+    # ปิดการสั่งเปิด Browser อัตโนมัติเมื่อรันบน Server Cloud
+    # (บน Render ไม่มี GUI หน้าจอ)
+    
     try:
         while not state.stop_event.is_set():
             state.refresh_event.clear()
@@ -1916,14 +1924,13 @@ def run_live(args):
                 with state.lock:
                     state.last_error = f"{type(e).__name__}: {str(e)[:200]}"
             has_data = state.payload_bytes is not None
-            nxt = start + interval_s if has_data else time.time() + 120     # ยังไม่มีข้อมูลเลย = ลองใหม่ใน 2 นาที
+            nxt = start + interval_s if has_data else time.time() + 120
             nxt = max(nxt, time.time() + 30)
             with state.lock:
                 state.next_refresh_at = nxt
                 if state.state != "stopping":
                     state.state = "idle"
                 state.progress = {"text": "รอรอบถัดไป", "done": 0, "total": 0}
-            print(f"\nรอบถัดไป: {datetime.fromtimestamp(nxt).strftime('%H:%M:%S')} (หรือกด 'รีเฟรชทันที' บน Dashboard)")
             while not state.stop_event.is_set() and time.time() < nxt:
                 if state.refresh_event.wait(1.0):
                     break
@@ -1933,7 +1940,7 @@ def run_live(args):
     finally:
         with state.lock:
             state.state = "stopped"
-        time.sleep(0.8)                      # ให้ response ของปุ่มปิดถูกส่งถึงเบราว์เซอร์ก่อน
+        time.sleep(0.8)
         srv.shutdown()
         srv.server_close()
         print("ปิดโปรแกรม Python แล้ว")
