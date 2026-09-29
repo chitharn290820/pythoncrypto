@@ -46,8 +46,11 @@ Crypto Decision Dashboard  (v4)
 - "ลงทุนได้" ตรวจจาก Binance เท่านั้น ก่อนซื้อจริงต้องเช็คว่ากระดานที่คุณใช้ (และถูกกฎหมายในประเทศของคุณ) มีเหรียญนั้น
 - ทั้งหมดนี้ไม่ใช่คำแนะนำการลงทุน ควรตั้ง stop-loss และลงเงินเฉพาะส่วนที่ยอมเสียได้
 """
-
-
+HEADERS= {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 import time
 import json
 import math
