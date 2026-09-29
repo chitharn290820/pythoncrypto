@@ -1,16 +1,22 @@
+import os
+from flask import Flask
+app = Flask(__name__)
+@app.route("/")
+def home():
+    return "Crypto Analyzer is running!"
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 import time
 import json
 import math
 import argparse
 from datetime import datetime, timezone
-
 import requests
 import pandas as pd
 import numpy as np
-
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
 BINANCE_BASE = "https://api.binance.com/api/v3"
-
 TOP_N_COINS = 60          # จำนวนเหรียญ (ตาม market cap) ที่จะนำมาวิเคราะห์ทั้งหมด
 DISPLAY_TOP_N = 10        # จำนวนเหรียญที่จะโชว์เป็นการ์ดมิเตอร์บนแดชบอร์ด
 HISTORY_DAYS = 365        # free tier ของ CoinGecko รองรับช่วงนี้แน่นอน
